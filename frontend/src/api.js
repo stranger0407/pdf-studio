@@ -40,16 +40,32 @@ export async function completeUpload(uploadId) {
   });
 }
 
-export async function startJob(uploadId, { tool = "ocr", quality = "standard", compressPreset = "lossless" } = {}) {
+export async function startJob(uploadId, {
+  tool = "ocr",
+  quality = "standard",
+  compressPreset = "lossless",
+  jpegQuality = null,
+  maxDpi = null,
+  grayscale = false,
+  stripMetadata = true,
+} = {}) {
+  const body = {
+    upload_id: uploadId,
+    tool,
+    quality,
+    compress_preset: compressPreset,
+  };
+  // Only include custom params when using custom preset
+  if (compressPreset === "custom") {
+    body.jpeg_quality = jpegQuality;
+    body.max_dpi = maxDpi;
+    body.grayscale = grayscale;
+    body.strip_metadata = stripMetadata;
+  }
   return request(`${API_BASE}/jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      upload_id: uploadId,
-      tool,
-      quality,
-      compress_preset: compressPreset,
-    }),
+    body: JSON.stringify(body),
   });
 }
 

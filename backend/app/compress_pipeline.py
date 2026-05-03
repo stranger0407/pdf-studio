@@ -6,10 +6,14 @@ Handles ALL image types including DCTDecode (already-JPEG) images.
 For JPEG images: reads raw JPEG bytes → Pillow → re-encodes at lower quality.
 For raw images: decodes pixels → Pillow → encodes as JPEG.
 
-Three modes:
+Built-in presets:
   Lossless   — stream recompression only (fast, ~5-15%)
   Balanced   — re-encode JPEG at Q85, downsample >150 DPI (~25-50%)
   Maximum    — re-encode JPEG at Q60, downsample >120 DPI (~50-75%)
+
+Custom mode:
+  User-configurable JPEG quality, max DPI, grayscale conversion,
+  and metadata stripping for fine-grained control.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import pikepdf
 from PIL import Image
@@ -28,26 +32,43 @@ from PIL import Image
 from .logging_utils import append_log
 
 
-COMPRESS_PRESETS = {
+# ---------------------------------------------------------------------------
+# Presets
+# ---------------------------------------------------------------------------
+COMPRESS_PRESETS: dict[str, dict[str, Any]] = {
     "lossless": {
         "label": "Lossless",
-        "jpeg_quality": None,
-        "max_dpi": None,
+        "jpeg_quality": None,       # no re-encoding
+        "max_dpi": None,            # no downsampling
+        "grayscale": False,
         "strip_metadata": False,
     },
     "balanced": {
         "label": "Balanced",
         "jpeg_quality": 85,
         "max_dpi": 150,
+        "grayscale": False,
         "strip_metadata": True,
     },
     "maximum": {
         "label": "Maximum",
         "jpeg_quality": 60,
         "max_dpi": 120,
+        "grayscale": False,
         "strip_metadata": True,
     },
 }
+
+# Safe ranges for custom parameters
+CUSTOM_JPEG_QUALITY_MIN = 10
+CUSTOM_JPEG_QUALITY_MAX = 100
+CUSTOM_DPI_MIN = 72
+CUSTOM_DPI_MAX = 600
+
+
+def _clamp(value: int | float, lo: int | float, hi: int | float) -> int | float:
+    """Clamp a value to [lo, hi]."""
+    return max(lo, min(hi, value))
 
 
 def _fmt(size_bytes: int) -> str:
@@ -61,6 +82,9 @@ def _fmt(size_bytes: int) -> str:
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 
+# ---------------------------------------------------------------------------
+# PDF Metadata / Thumbnail helpers
+# ---------------------------------------------------------------------------
 def _strip_thumbnails(pdf: pikepdf.Pdf) -> int:
     removed = 0
     for page in pdf.pages:
@@ -82,6 +106,9 @@ def _strip_document_metadata(pdf: pikepdf.Pdf) -> None:
                     pass
 
 
+# ---------------------------------------------------------------------------
+# Image analysis helpers
+# ---------------------------------------------------------------------------
 def _get_page_dimensions_pts(page: pikepdf.Page):
     """Return (width_pts, height_pts) of a page, or None."""
     try:
@@ -105,12 +132,16 @@ def _estimate_dpi(img_w: int, img_h: int, page_dims):
     return max(dpi_x, dpi_y)
 
 
+# ---------------------------------------------------------------------------
+# Image compression routines
+# ---------------------------------------------------------------------------
 def _compress_jpeg_image(
     xobj: pikepdf.Stream,
     pdf: pikepdf.Pdf,
     jpeg_quality: int,
     max_dpi: int | None,
     page_dims,
+    grayscale: bool = False,
 ) -> pikepdf.Stream | None:
     """
     Compress a DCTDecode (JPEG) image by reading raw JPEG bytes,
@@ -144,8 +175,10 @@ def _compress_jpeg_image(
             new_h = max(int(new_h * scale), 10)
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    # Convert to RGB if needed (CMYK, etc.)
-    if img.mode not in ("RGB", "L"):
+    # Convert to grayscale if requested
+    if grayscale and img.mode not in ("L",):
+        img = img.convert("L")
+    elif img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
 
     # Re-encode
@@ -158,7 +191,7 @@ def _compress_jpeg_image(
         return None
 
     # Build replacement stream
-    cs = pikepdf.Name.DeviceRGB if img.mode == "RGB" else pikepdf.Name.DeviceGray
+    cs = pikepdf.Name.DeviceGray if img.mode == "L" else pikepdf.Name.DeviceRGB
     new_stream = pikepdf.Stream(pdf, new_data)
     new_stream["/Type"] = pikepdf.Name.XObject
     new_stream["/Subtype"] = pikepdf.Name.Image
@@ -176,6 +209,7 @@ def _compress_raw_image(
     jpeg_quality: int,
     max_dpi: int | None,
     page_dims,
+    grayscale: bool = False,
 ) -> pikepdf.Stream | None:
     """
     Compress a non-JPEG image (FlateDecode, raw) by decoding pixels,
@@ -245,7 +279,11 @@ def _compress_raw_image(
             new_h = max(int(h * scale), 10)
             img = img.resize((new_w, new_h), Image.LANCZOS)
 
-    if mode == "CMYK":
+    # Grayscale conversion (if requested or CMYK → must convert anyway)
+    if grayscale:
+        img = img.convert("L")
+        mode = "L"
+    elif mode == "CMYK":
         img = img.convert("RGB")
         mode = "RGB"
 
@@ -256,7 +294,7 @@ def _compress_raw_image(
     if len(new_data) >= original_size * 0.95:
         return None
 
-    cs_name = pikepdf.Name.DeviceRGB if mode == "RGB" else pikepdf.Name.DeviceGray
+    cs_name = pikepdf.Name.DeviceGray if mode == "L" else pikepdf.Name.DeviceRGB
     new_stream = pikepdf.Stream(pdf, new_data)
     new_stream["/Type"] = pikepdf.Name.XObject
     new_stream["/Subtype"] = pikepdf.Name.Image
@@ -268,6 +306,9 @@ def _compress_raw_image(
     return new_stream
 
 
+# ---------------------------------------------------------------------------
+# Image indexing
+# ---------------------------------------------------------------------------
 def _collect_all_image_refs(pdf: pikepdf.Pdf):
     """
     Collect ALL unique image object references across the entire PDF.
@@ -302,22 +343,68 @@ def _collect_all_image_refs(pdf: pikepdf.Pdf):
     return seen
 
 
+# ---------------------------------------------------------------------------
+# Resolve configuration — merges preset with custom overrides
+# ---------------------------------------------------------------------------
+def _resolve_config(
+    preset: str,
+    custom_jpeg_quality: int | None = None,
+    custom_max_dpi: int | None = None,
+    custom_grayscale: bool = False,
+    custom_strip_metadata: bool = True,
+) -> dict[str, Any]:
+    """
+    If preset is 'custom', build config from individual parameters.
+    Otherwise use the built-in preset.
+    """
+    if preset == "custom":
+        # Validate and clamp custom values
+        jq = int(_clamp(custom_jpeg_quality or 75, CUSTOM_JPEG_QUALITY_MIN, CUSTOM_JPEG_QUALITY_MAX))
+        md = int(_clamp(custom_max_dpi or 150, CUSTOM_DPI_MIN, CUSTOM_DPI_MAX)) if custom_max_dpi else None
+        return {
+            "label": "Custom",
+            "jpeg_quality": jq,
+            "max_dpi": md,
+            "grayscale": bool(custom_grayscale),
+            "strip_metadata": bool(custom_strip_metadata),
+        }
+    return COMPRESS_PRESETS.get(preset, COMPRESS_PRESETS["lossless"])
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
 def process_pdf_compress(
     input_pdf: str,
     output_pdf: str,
     job_id: str,
     update_cb: Callable,
     preset: str = "lossless",
+    custom_jpeg_quality: int | None = None,
+    custom_max_dpi: int | None = None,
+    custom_grayscale: bool = False,
+    custom_strip_metadata: bool = True,
 ) -> None:
     _start = time.time()
-    config = COMPRESS_PRESETS.get(preset, COMPRESS_PRESETS["lossless"])
+
+    config = _resolve_config(
+        preset,
+        custom_jpeg_quality=custom_jpeg_quality,
+        custom_max_dpi=custom_max_dpi,
+        custom_grayscale=custom_grayscale,
+        custom_strip_metadata=custom_strip_metadata,
+    )
+
     input_size = os.path.getsize(input_pdf)
     jpeg_quality = config["jpeg_quality"]
     max_dpi = config["max_dpi"]
+    grayscale = config.get("grayscale", False)
     do_images = jpeg_quality is not None
 
     append_log("INFO", "compress",
-               f"Start: {_fmt(input_size)}, preset={preset}, Q={jpeg_quality}, DPI={max_dpi}",
+               f"Start: {_fmt(input_size)}, preset={preset}, "
+               f"Q={jpeg_quality}, DPI={max_dpi}, grayscale={grayscale}, "
+               f"strip_meta={config['strip_metadata']}",
                job_id=job_id)
     update_cb(message=f"Opening PDF ({_fmt(input_size)})…", progress=2)
 
@@ -365,11 +452,13 @@ def process_pdf_compress(
                 try:
                     if is_jpeg:
                         new_stream = _compress_jpeg_image(
-                            xobj, pdf, jpeg_quality, max_dpi, page_dims
+                            xobj, pdf, jpeg_quality, max_dpi, page_dims,
+                            grayscale=grayscale,
                         )
                     else:
                         new_stream = _compress_raw_image(
-                            xobj, pdf, jpeg_quality, max_dpi, page_dims
+                            xobj, pdf, jpeg_quality, max_dpi, page_dims,
+                            grayscale=grayscale,
                         )
                 except Exception:
                     pass
@@ -439,6 +528,8 @@ def process_pdf_compress(
                f"({reduction_pct}% reduction) in {elapsed}s")
         if total_compressed > 0:
             msg += f" | {total_compressed} images re-encoded"
+        if grayscale:
+            msg += " | grayscale"
 
         append_log("INFO", "compress", msg, job_id=job_id)
         update_cb(

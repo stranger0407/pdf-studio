@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { completeUpload, downloadUrl, getJob, getLogs, startJob, startUpload, uploadChunk } from "./api.js";
-import { Sun, Moon, FileText, BookOpen, Terminal, User, Upload, Download, X, RefreshCw, Copy, Check, Github, Mail, AlertTriangle, Zap, Star, Gem, Package, Minimize, Eye, Search, ArrowRight } from "./icons.jsx";
+import { Sun, Moon, FileText, BookOpen, Terminal, User, Upload, Download, X, RefreshCw, Copy, Check, Github, Mail, AlertTriangle, Zap, Star, Gem, Package, Minimize, Eye, Search, ArrowRight, Sliders, Settings, ChevronDown, ChevronUp } from "./icons.jsx";
 
 const MB = 1024 * 1024;
 const VER = "1.0.0";
@@ -94,12 +94,14 @@ function DocsPanel({ onClose }) {
           <div className="doc-callout"><strong>Pro Tip:</strong> Standard and Maximum modes use a text-overlay technique that preserves original image quality perfectly.</div>
 
           <h3><Minimize size={16} /> Compress Tool</h3>
-          <p>Compresses PDFs without quality loss. Handles files up to 1 GB+.</p>
-          <table><thead><tr><th>Preset</th><th>Quality</th><th>Description</th></tr></thead><tbody>
-            <tr><td><strong>Lossless</strong></td><td>100%</td><td>Recompress streams, deduplicate objects</td></tr>
-            <tr><td><strong>Balanced</strong></td><td>100%</td><td>+ Strip thumbnails & unused metadata</td></tr>
-            <tr><td><strong>Maximum</strong></td><td>100%</td><td>All optimizations — most space saved</td></tr>
+          <p>Compresses PDFs by re-encoding images and recompressing streams. Handles files up to 1 GB+.</p>
+          <table><thead><tr><th>Preset</th><th>Image Quality</th><th>Description</th></tr></thead><tbody>
+            <tr><td><strong>Lossless</strong></td><td>100%</td><td>Recompress streams only — zero quality loss</td></tr>
+            <tr><td><strong>Balanced</strong></td><td>JPEG Q85</td><td>Downsample &gt;150 DPI, strip metadata</td></tr>
+            <tr><td><strong>Maximum</strong></td><td>JPEG Q60</td><td>Aggressive downsample &gt;120 DPI</td></tr>
+            <tr><td><strong>Custom</strong></td><td>You choose</td><td>Full control: quality, DPI, grayscale, metadata</td></tr>
           </tbody></table>
+          <div className="doc-callout"><strong>Pro Tip:</strong> Text in PDFs is vector-based and always stays at maximum quality — only images are affected by compression settings. Use Custom mode for fine-grained control.</div>
 
           <h3><Package size={16} /> How It Works</h3>
           <ul>
@@ -191,6 +193,11 @@ export default function App() {
 
   // Compress-specific
   const [compressPreset, setCompressPreset] = useState("lossless");
+  const [jpegQuality, setJpegQuality] = useState(75);
+  const [maxDpi, setMaxDpi] = useState(150);
+  const [dpiEnabled, setDpiEnabled] = useState(true);
+  const [grayscale, setGrayscale] = useState(false);
+  const [stripMetadata, setStripMetadata] = useState(true);
 
   const [showLogs, setShowLogs] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
@@ -246,6 +253,10 @@ export default function App() {
         tool: activeTool,
         quality,
         compressPreset,
+        jpegQuality: compressPreset === "custom" ? jpegQuality : null,
+        maxDpi: compressPreset === "custom" && dpiEnabled ? maxDpi : null,
+        grayscale: compressPreset === "custom" ? grayscale : false,
+        stripMetadata: compressPreset === "custom" ? stripMetadata : true,
       }));
     } catch (e) { setError(e.message); setStatus("idle"); }
   };
@@ -346,11 +357,12 @@ export default function App() {
             {activeTool === "compress" && (
               <div>
                 <div className="quality-label">Compression Level</div>
-                <div className="quality-options">
-                                    {[["lossless", "Lossless", "Zero quality loss", "Stream packing only"], ["balanced", "Balanced", "JPEG Q85 + 150 DPI", "Recommended"], ["maximum", "Maximum", "JPEG Q60 + 120 DPI", "Smallest file"]].map(([v, n, d, hint]) => (
+                <div className="quality-options four-col">
+                  {[["lossless", "Lossless", "Zero quality loss", "Stream packing"], ["balanced", "Balanced", "JPEG Q85 · 150 DPI", "Recommended"], ["maximum", "Maximum", "JPEG Q60 · 120 DPI", "Smallest file"], ["custom", "Custom", "You configure", "Advanced"]].map(([v, n, d, hint]) => (
                     <label className="quality-option" key={v}>
                       <input type="radio" name="compress-preset" value={v} checked={compressPreset === v} onChange={() => setCompressPreset(v)} />
-                      <div className="quality-card">
+                      <div className={`quality-card ${v === "custom" ? "custom-card" : ""}`}>
+                        {v === "custom" ? <Sliders size={16} /> : null}
                         <span className="q-name">{n}</span>
                         <span className="q-detail">{d}</span>
                         <span className="q-hint">{hint}</span>
@@ -358,6 +370,97 @@ export default function App() {
                     </label>
                   ))}
                 </div>
+
+                {/* ---- Custom Controls Panel ---- */}
+                {compressPreset === "custom" && (
+                  <div className="custom-panel">
+                    <div className="custom-panel-header">
+                      <Settings size={15} />
+                      <span>Custom Compression Settings</span>
+                    </div>
+
+                    {/* JPEG Quality Slider */}
+                    <div className="custom-control">
+                      <div className="custom-control-header">
+                        <label className="custom-control-label">Image Quality (JPEG)</label>
+                        <span className="custom-control-value">{jpegQuality}</span>
+                      </div>
+                      <input
+                        type="range" min="10" max="100" step="5"
+                        value={jpegQuality}
+                        onChange={e => setJpegQuality(Number(e.target.value))}
+                        className="custom-slider"
+                      />
+                      <div className="custom-slider-labels">
+                        <span>10 (Tiny)</span>
+                        <span>50</span>
+                        <span>100 (Best)</span>
+                      </div>
+                    </div>
+
+                    {/* Max DPI */}
+                    <div className="custom-control">
+                      <div className="custom-control-header">
+                        <label className="custom-control-label">Max Image DPI</label>
+                        <label className="custom-toggle">
+                          <input type="checkbox" checked={dpiEnabled} onChange={e => setDpiEnabled(e.target.checked)} />
+                          <span className="toggle-track"><span className="toggle-thumb" /></span>
+                          <span className="toggle-label">{dpiEnabled ? "Downsample ON" : "Off (keep original)"}</span>
+                        </label>
+                      </div>
+                      {dpiEnabled && (
+                        <>
+                          <input
+                            type="range" min="72" max="600" step="1"
+                            value={maxDpi}
+                            onChange={e => setMaxDpi(Number(e.target.value))}
+                            className="custom-slider"
+                          />
+                          <div className="custom-slider-labels">
+                            <span>72 (Screen)</span>
+                            <span>150</span>
+                            <span>300 (Print)</span>
+                            <span>600</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Grayscale Toggle */}
+                    <div className="custom-control">
+                      <div className="custom-control-header">
+                        <label className="custom-control-label">Convert to Grayscale</label>
+                        <label className="custom-toggle">
+                          <input type="checkbox" checked={grayscale} onChange={e => setGrayscale(e.target.checked)} />
+                          <span className="toggle-track"><span className="toggle-thumb" /></span>
+                          <span className="toggle-label">{grayscale ? "Yes" : "No"}</span>
+                        </label>
+                      </div>
+                      <p className="custom-hint">Removes color data — great for text-heavy or B&W scanned docs</p>
+                    </div>
+
+                    {/* Strip Metadata Toggle */}
+                    <div className="custom-control">
+                      <div className="custom-control-header">
+                        <label className="custom-control-label">Strip Metadata</label>
+                        <label className="custom-toggle">
+                          <input type="checkbox" checked={stripMetadata} onChange={e => setStripMetadata(e.target.checked)} />
+                          <span className="toggle-track"><span className="toggle-thumb" /></span>
+                          <span className="toggle-label">{stripMetadata ? "Yes" : "No"}</span>
+                        </label>
+                      </div>
+                      <p className="custom-hint">Removes thumbnails, producer info, and non-essential metadata</p>
+                    </div>
+
+                    {/* Summary */}
+                    <div className="custom-summary">
+                      <strong>Summary:</strong> JPEG Q{jpegQuality}
+                      {dpiEnabled ? ` · Max ${maxDpi} DPI` : " · Original DPI"}
+                      {grayscale ? " · Grayscale" : ""}
+                      {stripMetadata ? " · Strip metadata" : ""}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

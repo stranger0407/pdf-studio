@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import traceback
+from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException, Request
@@ -39,7 +40,12 @@ class StartJobRequest(BaseModel):
     upload_id: str
     tool: str = "ocr"              # "ocr" or "compress"
     quality: str = "standard"      # OCR: "fast"/"standard"/"maximum"
-    compress_preset: str = "lossless"  # Compress: "lossless"/"balanced"/"maximum"
+    compress_preset: str = "lossless"  # Compress: "lossless"/"balanced"/"maximum"/"custom"
+    # Custom compression parameters (only used when compress_preset="custom")
+    jpeg_quality: Optional[int] = None     # 10–100
+    max_dpi: Optional[int] = None          # 72–600, null = no downsampling
+    grayscale: bool = False
+    strip_metadata: bool = True
 
 
 @app.get("/api/health")
@@ -93,9 +99,17 @@ def api_start_job(request: StartJobRequest) -> dict:
         job["quality"] = quality
         executor.submit(_run_ocr_job, job["job_id"], quality)
     elif tool == "compress":
-        preset = request.compress_preset if request.compress_preset in ("lossless", "balanced", "maximum") else "lossless"
+        preset = request.compress_preset if request.compress_preset in ("lossless", "balanced", "maximum", "custom") else "lossless"
         job["compress_preset"] = preset
-        executor.submit(_run_compress_job, job["job_id"], preset)
+        # Store custom params for the job
+        custom_params = {
+            "jpeg_quality": request.jpeg_quality,
+            "max_dpi": request.max_dpi,
+            "grayscale": request.grayscale,
+            "strip_metadata": request.strip_metadata,
+        }
+        job["custom_params"] = custom_params
+        executor.submit(_run_compress_job, job["job_id"], preset, custom_params)
 
     return job
 
@@ -130,12 +144,13 @@ def _run_ocr_job(job_id: str, quality: str = "standard") -> None:
         update_job(job_id, status="error", message=str(exc))
 
 
-def _run_compress_job(job_id: str, preset: str = "lossless") -> None:
+def _run_compress_job(job_id: str, preset: str = "lossless", custom_params: dict | None = None) -> None:
     job = get_job(job_id)
     if not job:
         return
+    cp = custom_params or {}
     try:
-        append_log("INFO", "compress", f"Job started — input: {job['input_path']}, preset={preset}", job_id=job_id)
+        append_log("INFO", "compress", f"Job started — input: {job['input_path']}, preset={preset}, custom={cp}", job_id=job_id)
         update_job(job_id, status="processing", progress=1, message="Starting compression")
         input_path = job["input_path"]
         output_path = output_path_for_job(job_id)
@@ -145,6 +160,10 @@ def _run_compress_job(job_id: str, preset: str = "lossless") -> None:
             job_id=job_id,
             update_cb=lambda **kwargs: update_job(job_id, **kwargs),
             preset=preset,
+            custom_jpeg_quality=cp.get("jpeg_quality"),
+            custom_max_dpi=cp.get("max_dpi"),
+            custom_grayscale=cp.get("grayscale", False),
+            custom_strip_metadata=cp.get("strip_metadata", True),
         )
         update_job(
             job_id,
