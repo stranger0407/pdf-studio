@@ -135,13 +135,14 @@ body {
 /* ---- Quality / Preset Selector ---- */
 .quality-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 2px; }
 .quality-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.quality-option { position: relative; cursor: pointer; }
+.quality-option { position: relative; cursor: pointer; display: flex; }
 .quality-option input { position: absolute; opacity: 0; width: 0; height: 0; }
 .quality-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; padding: 12px 8px; min-height: 80px; border-radius: var(--radius-md);
   border: 2px solid var(--border); background: var(--bg-inset);
   transition: all var(--transition); text-align: center;
+  width: 100%; height: 100%;
 }
 .quality-card:hover { border-color: var(--border-hover); }
 .quality-option input:checked + .quality-card { border-color: var(--accent); background: var(--accent-soft); }
@@ -237,6 +238,35 @@ body {
   border-left: 3px solid var(--accent); line-height: 1.5;
 }
 .custom-summary strong { color: var(--accent); margin-right: 4px; }
+
+/* ---- Color Picker (Restyle tool) ---- */
+.color-picker-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0;
+}
+.color-input {
+  width: 40px; height: 34px; border: 2px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; background: transparent; padding: 2px;
+}
+.color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input::-webkit-color-swatch { border: none; border-radius: 4px; }
+.color-hex {
+  font-family: 'SF Mono','Fira Code',monospace; font-size: 0.78rem; font-weight: 600;
+  color: var(--text-secondary); background: var(--bg-inset); padding: 4px 10px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); min-width: 75px;
+  text-align: center; text-transform: uppercase;
+}
+.color-swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+.color-swatch {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border);
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.color-swatch:hover { transform: scale(1.15); border-color: var(--text-tertiary); }
+.color-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); transform: scale(1.1); }
+.color-preview {
+  padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border);
+  line-height: 1.6; animation: panelSlideIn 0.2s ease;
+}
 
 /* ---- Buttons ---- */
 .btn-primary {

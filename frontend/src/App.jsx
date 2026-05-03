@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { completeUpload, downloadUrl, getJob, getLogs, startJob, startUpload, uploadChunk } from "./api.js";
-import { Sun, Moon, FileText, BookOpen, Terminal, User, Upload, Download, X, RefreshCw, Copy, Check, Github, Mail, AlertTriangle, Zap, Star, Gem, Package, Minimize, Eye, Search, ArrowRight, Sliders, Settings, ChevronDown, ChevronUp } from "./icons.jsx";
+import { Sun, Moon, FileText, BookOpen, Terminal, User, Upload, Download, X, RefreshCw, Copy, Check, Github, Mail, AlertTriangle, Zap, Star, Gem, Package, Minimize, Eye, Search, ArrowRight, Sliders, Settings, ChevronDown, ChevronUp, Palette, Droplet } from "./icons.jsx";
 
 const MB = 1024 * 1024;
 const VER = "1.0.0";
@@ -199,6 +199,12 @@ export default function App() {
   const [grayscale, setGrayscale] = useState(false);
   const [stripMetadata, setStripMetadata] = useState(true);
 
+  // Restyle-specific
+  const [textColor, setTextColor] = useState("#000000");
+  const [bgColor, setBgColor] = useState("#FFFFFF");
+  const [changeText, setChangeText] = useState(false);
+  const [changeBg, setChangeBg] = useState(false);
+
   const [showLogs, setShowLogs] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -248,7 +254,7 @@ export default function App() {
     try {
       const up = await startUpload(file); const cs = up.chunk_size; const tc = Math.ceil(file.size / cs);
       for (let i = 0; i < tc; i++) { await uploadChunk(up.upload_id, i, file.slice(i * cs, Math.min((i + 1) * cs, file.size))); setUploadPct(Math.round((i + 1) / tc * 100)); setLog(`Uploading chunk ${i + 1} of ${tc}`); }
-      await completeUpload(up.upload_id); setStatus("processing"); setLog(`Upload complete. Starting ${activeTool === "ocr" ? "OCR" : "compression"}...`);
+      await completeUpload(up.upload_id); setStatus("processing"); setLog(`Upload complete. Starting ${activeTool === "ocr" ? "OCR" : activeTool === "compress" ? "compression" : "restyle"}...`);
       setJob(await startJob(up.upload_id, {
         tool: activeTool,
         quality,
@@ -257,6 +263,8 @@ export default function App() {
         maxDpi: compressPreset === "custom" && dpiEnabled ? maxDpi : null,
         grayscale: compressPreset === "custom" ? grayscale : false,
         stripMetadata: compressPreset === "custom" ? stripMetadata : true,
+        textColor: changeText ? textColor : null,
+        bgColor: changeBg ? bgColor : null,
       }));
     } catch (e) { setError(e.message); setStatus("idle"); }
   };
@@ -267,6 +275,7 @@ export default function App() {
   const tools = [
     { id: "ocr", icon: Search, label: "OCR", desc: "Make PDFs searchable" },
     { id: "compress", icon: Minimize, label: "Compress", desc: "Reduce file size" },
+    { id: "restyle", icon: Palette, label: "Restyle", desc: "Change PDF colors" },
   ];
 
   return (
@@ -308,11 +317,13 @@ export default function App() {
       <main className="main-content">
         <div className="tool-header">
           <div className="tool-header-info">
-            <h2>{activeTool === "ocr" ? "OCR — Make PDFs Searchable" : "Compress — Reduce File Size"}</h2>
+            <h2>{activeTool === "ocr" ? "OCR — Make PDFs Searchable" : activeTool === "compress" ? "Compress — Reduce File Size" : "Restyle — Change PDF Colors"}</h2>
             <p className="tool-subtitle">
               {activeTool === "ocr"
                 ? "Convert scanned PDFs into searchable documents — fast, private, and local."
-                : "Compress PDFs without quality loss — handles files up to 1 GB and beyond."
+                : activeTool === "compress"
+                ? "Compress PDFs without quality loss — handles files up to 1 GB and beyond."
+                : "Change text and background colors of your PDF — no OCR required."
               }
             </p>
           </div>
@@ -464,8 +475,72 @@ export default function App() {
               </div>
             )}
 
+            {/* ---- Restyle Controls ---- */}
+            {activeTool === "restyle" && (
+              <div className="custom-panel">
+                <div className="custom-panel-header">
+                  <Palette size={15} />
+                  <span>Color Settings</span>
+                </div>
+
+                {/* Text Color */}
+                <div className="custom-control">
+                  <div className="custom-control-header">
+                    <label className="custom-control-label">Text Color</label>
+                    <label className="custom-toggle">
+                      <input type="checkbox" checked={changeText} onChange={e => setChangeText(e.target.checked)} />
+                      <span className="toggle-track"><span className="toggle-thumb" /></span>
+                      <span className="toggle-label">{changeText ? "Change" : "Keep original"}</span>
+                    </label>
+                  </div>
+                  {changeText && (
+                    <div className="color-picker-row">
+                      <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} className="color-input" />
+                      <span className="color-hex">{textColor}</span>
+                      <div className="color-swatches">
+                        {["#000000","#1a1a2e","#16213e","#0f3460","#533483","#e94560","#2d6a4f","#264653"].map(c => (
+                          <button key={c} className={`color-swatch ${textColor === c ? "active" : ""}`} style={{ background: c }} onClick={() => setTextColor(c)} title={c} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Background Color */}
+                <div className="custom-control">
+                  <div className="custom-control-header">
+                    <label className="custom-control-label">Background Color</label>
+                    <label className="custom-toggle">
+                      <input type="checkbox" checked={changeBg} onChange={e => setChangeBg(e.target.checked)} />
+                      <span className="toggle-track"><span className="toggle-thumb" /></span>
+                      <span className="toggle-label">{changeBg ? "Change" : "Keep original"}</span>
+                    </label>
+                  </div>
+                  {changeBg && (
+                    <div className="color-picker-row">
+                      <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="color-input" />
+                      <span className="color-hex">{bgColor}</span>
+                      <div className="color-swatches">
+                        {["#FFFFFF","#FFFFF0","#FFF8DC","#F0F8FF","#F5F5DC","#E8E8E8","#1a1a2e","#0d1117"].map(c => (
+                          <button key={c} className={`color-swatch ${bgColor === c ? "active" : ""}`} style={{ background: c }} onClick={() => setBgColor(c)} title={c} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preview */}
+                {(changeText || changeBg) && (
+                  <div className="color-preview" style={{ background: changeBg ? bgColor : "var(--bg-card)", color: changeText ? textColor : "var(--text-primary)" }}>
+                    <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>Preview Text</p>
+                    <p style={{ fontSize: "0.8rem" }}>The quick brown fox jumps over the lazy dog. This is how your PDF text will look with the selected colors.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <button className="btn-primary" onClick={onStart} disabled={!canStart}>
-              {activeTool === "ocr" ? <><Search size={16} /> Start OCR</> : <><Minimize size={16} /> Start Compression</>}
+              {activeTool === "ocr" ? <><Search size={16} /> Start OCR</> : activeTool === "compress" ? <><Minimize size={16} /> Start Compression</> : <><Palette size={16} /> Start Restyle</>}
             </button>
 
             <div className="progress-wrap">
@@ -509,7 +584,7 @@ export default function App() {
             {dl && (
               <a className="btn-link" href={dl}>
                 <Download size={16} />
-                {activeTool === "ocr" ? "Download Searchable PDF" : "Download Compressed PDF"}
+                {activeTool === "ocr" ? "Download Searchable PDF" : activeTool === "compress" ? "Download Compressed PDF" : "Download Restyled PDF"}
               </a>
             )}
             {error && (
