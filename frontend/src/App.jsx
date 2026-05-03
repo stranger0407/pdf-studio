@@ -210,6 +210,9 @@ export default function App() {
     setJob(null);
     setError("");
     setLog("Ready to upload a PDF.");
+    // Reset the file input so the same file can be re-selected
+    const inp = document.getElementById("pdf-input");
+    if (inp) inp.value = "";
   };
 
   useEffect(() => {
@@ -223,10 +226,14 @@ export default function App() {
     return () => { off = true; clearInterval(iv); };
   }, [job?.job_id, job?.status]);
 
-  const onFileSelect = (f) => {
+  const onFileSelect = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
     setError(""); setUploadPct(0); setJob(null); setStatus("idle");
     setFile(f);
     setLog("File selected. Ready to process.");
+    // Reset value so selecting the same file again triggers onChange
+    e.target.value = "";
   };
 
   const onStart = async () => {
@@ -305,7 +312,7 @@ export default function App() {
           <div className="card">
             <div className="card-title">Input</div>
 
-            <div className="dropzone" onClick={() => document.getElementById("pdf-input").click()}>
+            <div className="dropzone">
               <label className="dropzone-label" htmlFor="pdf-input">
                 <div className="dropzone-icon"><Upload size={20} /></div>
                 <div className="dropzone-text">
@@ -313,7 +320,7 @@ export default function App() {
                   <span className="file-hint">{file ? fmt(file.size) : "Up to 1 GB supported"}</span>
                 </div>
               </label>
-              <input id="pdf-input" type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelect(f); }} />
+              <input id="pdf-input" type="file" accept="application/pdf" onChange={onFileSelect} />
             </div>
 
             {/* ---- OCR Quality Presets ---- */}
@@ -340,7 +347,7 @@ export default function App() {
               <div>
                 <div className="quality-label">Compression Level</div>
                 <div className="quality-options">
-                  {[["lossless", "Lossless", "100% quality", "Safe default"], ["balanced", "Balanced", "100% quality", "Strips metadata"], ["maximum", "Maximum", "100% quality", "Most space saved"]].map(([v, n, d, hint]) => (
+                                    {[["lossless", "Lossless", "Zero quality loss", "Stream packing only"], ["balanced", "Balanced", "JPEG Q85 + 150 DPI", "Recommended"], ["maximum", "Maximum", "JPEG Q60 + 120 DPI", "Smallest file"]].map(([v, n, d, hint]) => (
                     <label className="quality-option" key={v}>
                       <input type="radio" name="compress-preset" value={v} checked={compressPreset === v} onChange={() => setCompressPreset(v)} />
                       <div className="quality-card">
