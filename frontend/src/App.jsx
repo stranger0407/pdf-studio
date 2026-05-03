@@ -75,11 +75,11 @@ function DocsPanel({ onClose }) {
         </div>
         <div className="modal-body docs">
           <h3><Zap size={16} /> Quick Start</h3>
-          <p>PDF Studio is a unified local PDF toolkit. Select a tool from the sidebar, upload a PDF, and process it — all locally on your machine.</p>
+          <p>PDF Studio is a unified local PDF toolkit with three powerful tools. Select a tool from the sidebar, upload a PDF, and process it — all locally on your machine.</p>
           <ol>
-            <li><span className="doc-step-num">1</span><strong>Select a Tool</strong> — Choose OCR or Compress from the sidebar</li>
+            <li><span className="doc-step-num">1</span><strong>Select a Tool</strong> — Choose OCR, Compress, or Restyle from the sidebar</li>
             <li><span className="doc-step-num">2</span><strong>Upload a PDF</strong> — Click the upload area or drag a file (up to 1 GB)</li>
-            <li><span className="doc-step-num">3</span><strong>Configure</strong> — Choose quality preset or compression level</li>
+            <li><span className="doc-step-num">3</span><strong>Configure</strong> — Choose quality preset, compression level, or color settings</li>
             <li><span className="doc-step-num">4</span><strong>Process</strong> — Click Start and monitor progress</li>
             <li><span className="doc-step-num">5</span><strong>Download</strong> — Get your processed PDF</li>
           </ol>
@@ -103,12 +103,22 @@ function DocsPanel({ onClose }) {
           </tbody></table>
           <div className="doc-callout"><strong>Pro Tip:</strong> Text in PDFs is vector-based and always stays at maximum quality — only images are affected by compression settings. Use Custom mode for fine-grained control.</div>
 
+          <h3><Palette size={16} /> Restyle Tool</h3>
+          <p>Change the visual appearance of your PDF — text color and background color — without OCR or quality loss.</p>
+          <table><thead><tr><th>Feature</th><th>Description</th></tr></thead><tbody>
+            <tr><td><strong>Text Color</strong></td><td>Recolor all text and fill paths — use the picker or preset swatches</td></tr>
+            <tr><td><strong>Background Color</strong></td><td>Insert a solid color behind all content on every page</td></tr>
+            <tr><td><strong>Live Preview</strong></td><td>See how your color choices look before processing</td></tr>
+          </tbody></table>
+          <div className="doc-callout"><strong>Pro Tip:</strong> Restyle works independently of OCR — it modifies the PDF content streams directly using PyMuPDF. Text remains selectable and searchable.</div>
+
           <h3><Package size={16} /> How It Works</h3>
           <ul>
             <li><strong>Chunked Upload</strong> — Large files split into 8 MB chunks for reliable transfer</li>
             <li><strong>Parallel OCR</strong> — Multiple Tesseract processes across all CPU cores</li>
             <li><strong>Stream Recompression</strong> — Re-deflate all PDF streams at maximum level</li>
-            <li><strong>Image Deduplication</strong> — Find and merge identical images</li>
+            <li><strong>Image Re-encoding</strong> — JPEG quality, DPI downsampling, and grayscale conversion</li>
+            <li><strong>Color Stream Editing</strong> — Regex-based replacement of PDF color operators (rg, g, k)</li>
             <li><strong>100% Local</strong> — No files ever leave your machine</li>
           </ul>
 
@@ -116,7 +126,8 @@ function DocsPanel({ onClose }) {
           <ul>
             <li><strong>OCR is slow</strong> — Use Fast preset, or close CPU-heavy applications</li>
             <li><strong>Tesseract not found</strong> — Check Logs panel; verify installation path</li>
-            <li><strong>Compression minimal</strong> — Already-optimized PDFs may see small reductions</li>
+            <li><strong>Compression minimal</strong> — Already-optimized PDFs may see small reductions; try Custom with lower JPEG quality</li>
+            <li><strong>Colors not changing</strong> — Restyle only affects fill-color operators; some PDFs use embedded images for text (use OCR first)</li>
             <li><strong>Upload fails</strong> — Ensure enough disk space (~3x file size during processing)</li>
           </ul>
         </div>
@@ -140,14 +151,14 @@ function AboutPanel({ onClose }) {
           <div className="about-icon"><User size={28} /></div>
           <p className="about-name">Raja</p>
           <p className="about-handle">@stranger0407</p>
-          <p className="about-bio">Full-stack developer building tools that make document processing accessible, efficient, and private. PDF Studio was created to be the one-stop local PDF toolkit — no cloud, no subscriptions, no limits.</p>
+          <p className="about-bio">Full-stack developer building tools that make document processing accessible, efficient, and private. PDF Studio is the one-stop local PDF toolkit — OCR, Compress, and Restyle — no cloud, no subscriptions, no limits.</p>
           <div className="about-links">
             <a className="about-link" href="https://github.com/stranger0407" target="_blank" rel="noopener noreferrer"><Github size={15} /> GitHub</a>
             <a className="about-link" href="https://github.com/stranger0407/pdf-studio" target="_blank" rel="noopener noreferrer"><Package size={15} /> Source Code</a>
             <a className="about-link" href="mailto:rgjha2001@gmail.com"><Mail size={15} /> rgjha2001@gmail.com</a>
           </div>
           <hr className="about-divider" />
-          <p className="about-tagline">Built with ❤️ — 100% local, 100% free</p>
+          <p className="about-tagline">Built with ❤️ — 100% local, 100% free, 3 powerful tools</p>
         </div>
       </div>
     </div>
