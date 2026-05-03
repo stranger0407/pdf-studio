@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node
+node_modules/
+
+# Build output
+dist/
+dist-desktop/
+build/
+backend/build/
+backend/dist/
+
+# Environment
+.env
+.env.local
+
+# Data (uploads, outputs, jobs)
+backend/data/
+backend/logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vercel
+.vercel/
+
+# Test files
+*.test.pdf
+*.pdf
+
+# Desktop vendor (too large for git)
+desktop/vendor/
