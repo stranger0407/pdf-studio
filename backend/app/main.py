@@ -17,6 +17,7 @@ from .jobs import create_job, get_job, output_path_for_job, update_job
 from .logging_utils import append_log, read_logs, get_system_info
 from .ocr_pipeline import process_pdf_ocr
 from .compress_pipeline import process_pdf_compress
+from .restyle_pipeline import process_pdf_restyle
 from .storage import complete_upload, get_upload, start_upload, write_chunk
 
 app = FastAPI(title="PDF Studio API")
@@ -38,7 +39,7 @@ class StartUploadRequest(BaseModel):
 
 class StartJobRequest(BaseModel):
     upload_id: str
-    tool: str = "ocr"              # "ocr" or "compress"
+    tool: str = "ocr"              # "ocr", "compress", or "restyle"
     quality: str = "standard"      # OCR: "fast"/"standard"/"maximum"
     compress_preset: str = "lossless"  # Compress: "lossless"/"balanced"/"maximum"/"custom"
     # Custom compression parameters (only used when compress_preset="custom")
@@ -46,6 +47,9 @@ class StartJobRequest(BaseModel):
     max_dpi: Optional[int] = None          # 72–600, null = no downsampling
     grayscale: bool = False
     strip_metadata: bool = True
+    # Restyle parameters
+    text_color: Optional[str] = None       # hex e.g. "#FF0000"
+    bg_color: Optional[str] = None         # hex e.g. "#FFFFF0"
 
 
 @app.get("/api/health")
@@ -91,7 +95,7 @@ def api_start_job(request: StartJobRequest) -> dict:
     if not upload.get("file_path"):
         raise HTTPException(status_code=409, detail="upload not completed")
 
-    tool = request.tool if request.tool in ("ocr", "compress") else "ocr"
+    tool = request.tool if request.tool in ("ocr", "compress", "restyle") else "ocr"
     job = create_job(upload, tool=tool)
 
     if tool == "ocr":
@@ -101,7 +105,6 @@ def api_start_job(request: StartJobRequest) -> dict:
     elif tool == "compress":
         preset = request.compress_preset if request.compress_preset in ("lossless", "balanced", "maximum", "custom") else "lossless"
         job["compress_preset"] = preset
-        # Store custom params for the job
         custom_params = {
             "jpeg_quality": request.jpeg_quality,
             "max_dpi": request.max_dpi,
@@ -110,6 +113,10 @@ def api_start_job(request: StartJobRequest) -> dict:
         }
         job["custom_params"] = custom_params
         executor.submit(_run_compress_job, job["job_id"], preset, custom_params)
+    elif tool == "restyle":
+        job["text_color"] = request.text_color
+        job["bg_color"] = request.bg_color
+        executor.submit(_run_restyle_job, job["job_id"], request.text_color, request.bg_color)
 
     return job
 
@@ -176,6 +183,37 @@ def _run_compress_job(job_id: str, preset: str = "lossless", custom_params: dict
     except Exception as exc:
         tb = traceback.format_exc()
         append_log("ERROR", "compress", f"{exc}\n{tb}", job_id=job_id)
+        update_job(job_id, status="error", message=str(exc))
+
+
+def _run_restyle_job(job_id: str, text_color: str | None = None, bg_color: str | None = None) -> None:
+    job = get_job(job_id)
+    if not job:
+        return
+    try:
+        append_log("INFO", "restyle", f"Job started — input: {job['input_path']}, text={text_color}, bg={bg_color}", job_id=job_id)
+        update_job(job_id, status="processing", progress=1, message="Starting restyle")
+        input_path = job["input_path"]
+        output_path = output_path_for_job(job_id)
+        process_pdf_restyle(
+            input_path,
+            output_path,
+            job_id=job_id,
+            update_cb=lambda **kwargs: update_job(job_id, **kwargs),
+            text_color=text_color,
+            bg_color=bg_color,
+        )
+        update_job(
+            job_id,
+            status="done",
+            progress=100,
+            message="Complete",
+            output_path=output_path,
+        )
+        append_log("INFO", "restyle", "Job completed successfully", job_id=job_id)
+    except Exception as exc:
+        tb = traceback.format_exc()
+        append_log("ERROR", "restyle", f"{exc}\n{tb}", job_id=job_id)
         update_job(job_id, status="error", message=str(exc))
 
 

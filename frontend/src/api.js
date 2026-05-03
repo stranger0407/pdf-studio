@@ -48,6 +48,8 @@ export async function startJob(uploadId, {
   maxDpi = null,
   grayscale = false,
   stripMetadata = true,
+  textColor = null,
+  bgColor = null,
 } = {}) {
   const body = {
     upload_id: uploadId,
@@ -61,6 +63,11 @@ export async function startJob(uploadId, {
     body.max_dpi = maxDpi;
     body.grayscale = grayscale;
     body.strip_metadata = stripMetadata;
+  }
+  // Include restyle params
+  if (tool === "restyle") {
+    body.text_color = textColor;
+    body.bg_color = bgColor;
   }
   return request(`${API_BASE}/jobs`, {
     method: "POST",
